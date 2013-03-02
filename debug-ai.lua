@@ -11,10 +11,6 @@ sgs.ai_debug_func[sgs.CardUsed].debugfunc=function(self, player, data)
 	 end
 end
 
-
-
-
-
 function debugFunc(self, room, player, data)
 	local owner =room:getOwner()
 	local choices = {"showVisiblecards","showHandcards","objectiveLevel","getDefenseSlash"}
@@ -24,9 +20,6 @@ function debugFunc(self, room, player, data)
 		player:speak(msg)
 		logmsg("ai.html","<pre>"..msg.."</pre>")
 	end
-
-
-
 	local players = sgs.QList2Table(room:getAlivePlayers())
 	repeat
 		local choice=room:askForChoice(owner,"aidebug","cancel+"..table.concat(choices,"+"))
@@ -62,7 +55,7 @@ function debugFunc(self, room, player, data)
 		end
 		if choice == "objectiveLevel" then
 			debugmsg(" ")
-			debugmsg("============%s(%.1f)", sgs.processvalue[sgs.gameProcess(room)], sgs.gameProcess(room,1))
+			debugmsg("============%s(%.1f)", sgs.gameProcess(room), sgs.gameProcess(room,1))
 			debugmsg("查看关系; 当前AI是: %s[%s]",sgs.Sanguosha:translate(player:getGeneralName()),sgs.Sanguosha:translate(player:getRole()) )
 			for i=1, #players, 1 do
 				local level=self:objectiveLevel(players[i])
@@ -97,6 +90,34 @@ function logmsg(fname,fmt,...)
 	if type(fmt)=="boolean" then fmt = fmt and "true" or "false" end
 	fp:write(string.format(fmt, unpack(arg)).."\r\n")
 	fp:close()
+end
+
+function endlessNiepan(who)
+	local room = who:getRoom()	
+	if who:getGeneral2() or who:getHp() > 0 then return end
+
+	local rebel_value = sgs.role_evaluation[who:objectName()]["rebel"]
+	local renegade_value = sgs.role_evaluation[who:objectName()]["renegade"]
+	local loyalist_value = sgs.role_evaluation[who:objectName()]["loyalist"]
+	
+	for _,skill in sgs.qlist(who:getVisibleSkillList()) do
+		if skill:getLocation()==sgs.Skill_Right then
+			room:detachSkillFromPlayer(who, skill:objectName())
+		end
+	end
+	local names = sgs.Sanguosha:getRandomGenerals(1)
+	room:changeHero(who, names[1] , true, true, false, true)
+	room:setPlayerProperty(who, "maxhp", sgs.QVariant(5))
+	room:setPlayerProperty(who, "kingdom", sgs.QVariant(who:getGeneral():getKingdom()))
+	who:setGender(who:getGeneral():getGender())
+	room:setTag("SwapPile",sgs.QVariant(0))
+
+	who:bury()
+	who:drawCards(5)
+
+	sgs.role_evaluation[who:objectName()]["rebel"] = rebel_value
+	sgs.role_evaluation[who:objectName()]["renegade"] = renegade_value
+	sgs.role_evaluation[who:objectName()]["loyalist"] = loyalist_value
 end
 
 

@@ -1,13 +1,24 @@
-neoluoyi_skill={}
-neoluoyi_skill.name="neoluoyi"
+neoluoyi_skill = {}
+neoluoyi_skill.name = "neoluoyi"
 table.insert(sgs.ai_skills, neoluoyi_skill)
-neoluoyi_skill.getTurnUseCard=function(self)
+neoluoyi_skill.getTurnUseCard = function(self)
 	if self.player:hasUsed("LuoyiCard") then return nil end
-	local cards=self.player:getHandcards()
-	cards=sgs.QList2Table(cards)
+	local luoyicard
+
+	if self.player:hasArmorEffect("SilverLion") and self.player:isWounded() and self:isWeak() then
+		luoyicard = self.player:getArmor()
+		return sgs.Card_Parse("@LuoyiCard=" .. luoyicard:getEffectiveId())
+	end
+
+	if self:needBear() then return nil end
+	if self.player:getSlashCount() > 0 and not (self.player:hasSkill("paoxiao") or self:isEquip("Crossbow")) then return nil end
+	local cards = self.player:getHandcards()
+	cards = sgs.QList2Table(cards)
 	local slashtarget = 0
 	local dueltarget = 0
 	local equipnum = 0
+	local offhorse = self.player:getOffensiveHorse()
+	local noHorseTargets = 0
 	self:sort(self.enemies,"hp")
 	for _, card in sgs.qlist(self.player:getCards("he")) do
 		if card:isKindOf("EquipCard") and not (card:isKindOf("Weapon") and self:hasEquip(card))  then
@@ -17,37 +28,59 @@ neoluoyi_skill.getTurnUseCard=function(self)
 	for _,card in ipairs(cards) do
 		if card:isKindOf("Slash") then
 			for _,enemy in ipairs(self.enemies) do
-				if self.player:canSlash(enemy, card, true) and self:slashIsEffective(card, enemy) and self:objectiveLevel(enemy) > 3 then
+				if self.player:canSlash(enemy, card) and self:slashIsEffective(card, enemy) and self:objectiveLevel(enemy) > 3 and sgs.isGoodTarget(enemy, self.enemies, self) then
 					if getCardsNum("Jink", enemy) < 1 or (self:isEquip("Axe") and self.player:getCards("he"):length() > 4) then
 						slashtarget = slashtarget + 1
+						if offhorse and self.player:distanceTo(enemy, 1)<=self.player:getAttackRange() then
+							noHorseTargets = noHorseTargets + 1
+						end
 					end
 				end
 			end
 		end
 		if card:isKindOf("Duel") then
 			for _, enemy in ipairs(self.enemies) do
-				if self:getCardsNum("Slash") >= getCardsNum("Slash", enemy) 
+				if self:getCardsNum("Slash") >= getCardsNum("Slash", enemy) and sgs.isGoodTarget(enemy, self.enemies, self)
 				and self:objectiveLevel(enemy) > 3 and not self:cantbeHurt(enemy) and self:damageIsEffective(enemy) and enemy:getMark("@late") == 0 then
 					dueltarget = dueltarget + 1 
 				end
 			end
 		end
 	end		
-	if (slashtarget+dueltarget) > 0 and equipnum > 0 then
+	if (slashtarget + dueltarget) > 0 and equipnum > 0 then
 		self:speak("luoyi")
-		local luoyicard
-		for _, card in sgs.qlist(self.player:getCards("he")) do
-			if card:isKindOf("EquipCard") and not self.player:hasEquip(card) then 
-				luoyicard = card
-				break
+		if self.player:hasArmorEffect("SilverLion") and self.player:isWounded() then
+			luoyicard = self.player:getArmor()
+		end
+		
+		if not luoyicard then
+			for _, card in sgs.qlist(self.player:getCards("he")) do
+				if card:isKindOf("EquipCard") and not self.player:hasEquip(card) then 
+					luoyicard = card
+					break
+				end
 			end
 		end
-		for _, card in sgs.qlist(self.player:getCards("he")) do
-			if card:isKindOf("EquipCard") and not card:isKindOf("Weapon") then 
-				luoyicard = card
-				break
+		if not luoyicard and offhorse then
+			if noHorseTargets == 0 then
+				for _, card in sgs.qlist(self.player:getCards("he")) do
+					if card:isKindOf("EquipCard") and not card:isKindOf("OffensiveHorse") then 
+						luoyicard = card
+						break
+					end
+				end
+				if not luoyicard and dueltarget == 0 then return nil end
 			end
 		end
+		if not luoyicard then
+			for _, card in sgs.qlist(self.player:getCards("he")) do
+				if card:isKindOf("EquipCard") and not card:isKindOf("Weapon") then 
+					luoyicard = card
+					break
+				end
+			end
+		end
+		if not luoyicard then return nil end
 		return sgs.Card_Parse("@LuoyiCard=" .. luoyicard:getEffectiveId())
 	end
 end
@@ -59,11 +92,11 @@ end
 sgs.ai_use_priority.LuoyiCard = 9.2
 
 local neofanjian_skill={}
-neofanjian_skill.name="neofanjian"
-table.insert(sgs.ai_skills,neofanjian_skill)
+neofanjian_skill.name = "neofanjian"
+table.insert(sgs.ai_skills, neofanjian_skill)
 neofanjian_skill.getTurnUseCard=function(self)
 	if self.player:isKongcheng() then return nil end
-	if self.player:usedTimes("NeoFanjianCard")>0 then return nil end
+	if self.player:usedTimes("NeoFanjianCard") > 0 then return nil end
 
 	local cards = sgs.QList2Table(self.player:getHandcards())
 	self:sortByKeepValue(cards)
@@ -103,20 +136,26 @@ end
 sgs.ai_skill_invoke.yishi = function(self, data)
 	local damage = data:toDamage()
 	local target = damage.to
-	local judge_card = target:getCards("j")
 	if self:isFriend(target) then
-		if judge_card and judge_card:length() > 0 then return true end
-		if not (target:getHp()>2 and target:hasSkill("yiji")) 
-			and not (target:hasSkill("longhun") and target:getHp()>1 and target:getCards("he"):length()>2)
-			and not (target:getHp()>2 and target:hasSkill("guixin") and self.room:alivePlayerCount() > 2)
-				then return true
+		if damage.damage == 1 and self:getDamagedEffects(target, self.player)
+			and (target:getJudgingArea():isEmpty() or target:containsTrick("YanxiaoCard")) then
+			return false
 		end
+		return true
 	else
-		if damage.card:hasFlag("drank") then return false end
+		if self:hasHeavySlashDamage(self.player, damage.card, target) then return false end
 		if self:isWeak(target) then return false end
-		if target:getArmor() and self:evaluateArmor(target:getArmor(), target)>3 and not self:isEquip("Vine", target) then return true end
-		if target:hasSkill("tuntian") then return false end
-		if self:hasSkills(sgs.need_kongcheng, target) then return false end
+		if target:getEquips():length() == 0 
+			and (target:getHandcardNum() == 1 and (self:hasSkills(sgs.need_kongcheng, target) or not self:hasLoseHandcardEffective(target))) then
+			return false
+		end
+		if (target:hasSkill("tuntian") and target:getPile("field"):length() >= 2 and target:getPhase() == sgs.Player_NotActive)
+			or (target:isKongcheng() and self:hasSkills(sgs.lose_equip_skill, target)) then
+			return false
+		end
+		if self:getDamagedEffects(target, self.player) or (target:getArmor() and not target:getArmor():isKindOf("SilverLion")) then return true end
+		if self:getDangerousCard(target) then return true end
+		if target:getDefensiveHorse() then return true end
 		return false
 	end 
 end
@@ -158,22 +197,7 @@ end
 
 sgs.ai_cardneed.zhulou = sgs.ai_cardneed.weapon
 
-sgs.zhulou_keep_value = {
-	Peach = 6,
-	Jink = 5.1,
-	Crossbow = 5,
-	Blade = 5,
-	Spear = 5,
-	DoubleSword =5,
-	QinggangSword=5,
-	Axe=5,
-	KylinBow=5,
-	Halberd=5,
-	IceSword=5,
-	Fan=5,
-	MoonSpear=5,
-	GudingBlade=5
-}
+sgs.zhulou_keep_value = sgs.qiangxi_keep_value
 
 function sgs.ai_skill_invoke.neojushou(self, data)
 	if not self.player:faceUp() then return true end
@@ -201,7 +225,7 @@ end
 sgs.ai_need_damaged.neoganglie = function (self, attacker)
 	if self:getDamagedEffects(attacker,self.player) then return self:isFriend(attacker) end
 
-	if self:isEnemy(attacker) and attacker:getHp() <= 2 and not attacker:hasSkill("buqu") and sgs.isGoodTarget(attacker,self.enemies) then
+	if self:isEnemy(attacker) and attacker:getHp() <= 2 and not attacker:hasSkill("buqu") and sgs.isGoodTarget(attacker,self.enemies, self) then
 		return true
 	end
 	return false

@@ -53,7 +53,8 @@ sgs.ai_skill_playerchosen.wuhun = function(self, targets)
 end
 
 function sgs.ai_slash_prohibit.wuhun(self, to)
-	if self:hasSkills("jueqing|qianxi") then return false end
+	if self.player:hasSkill("jueqing") or (self.player:hasSkill("qianxi") and self.player:distanceTo(to) == 1) then return false end
+	if self.player:hasFlag("nosjiefanUsed") then return false end
 	local maxfriendmark = 0
 	local maxenemymark = 0
 	for _, friend in ipairs(self.friends) do
@@ -518,7 +519,7 @@ sgs.ai_need_damaged.guixin = function (self, attacker)
 	if self.room:alivePlayerCount() <=3 then return false end
 	local diaochan = self.room:findPlayerBySkillName("lihun")
 	if diaochan and self:isEnemy(diaochan) then return false end
-	local num =self.player:getHandcardNum()
+	local num = self.player:getHandcardNum()
 	if self.player:faceUp() and num - self.player:getHp() > 2 then return false end
 	return true
 end
@@ -526,6 +527,7 @@ end
 sgs.ai_chaofeng.shencaocao = -6
 
 sgs.ai_skill_choice.wumou = function(self, choices)
+	if self.player:getMark("@wrath") > 6 then return "discard" end
 	if self.player:getHp() + self:getCardsNum("Peach") > 3 then return "losehp"
 	else return "discard"
 	end
@@ -534,7 +536,7 @@ end
 local wuqian_skill={}
 wuqian_skill.name = "wuqian"
 table.insert(sgs.ai_skills, wuqian_skill)
-wuqian_skill.getTurnUseCard=function(self)
+wuqian_skill.getTurnUseCard = function(self)
 	if self.player:hasUsed("WuqianCard") or self.player:getMark("@wrath") < 2 then return end
 
 	local card_str = ("@WuqianCard=.")
@@ -580,10 +582,10 @@ sgs.ai_card_intention.WuqianCard = 80
 function SmartAI:cansaveplayer(player)
 	player = player or self.player
 	local good = 0
-	if  self:hasSkills("jijiu|jiefan",player)  and player:getHandcardNum()>0  then
+	if  self:hasSkills("jijiu|nosjiefan",player)  and player:getHandcardNum() > 0  then
 		good = good + 0.5 
 	end
-	if player:hasSkill("chunlao") and player:getPile("wine"):length()>0 then
+	if player:hasSkill("chunlao") and player:getPile("wine"):length() > 0 then
 		good = good + 1 
 	end
 	if player:hasSkill("buyi") then 
@@ -595,7 +597,7 @@ end
 function SmartAI:dangerousshenguanyu(player)
 	if not player then self.room:writeToConsole("Player is empty in dangerousshenguanyu!") return end
 	local good = 0
-	if player:hasSkill("wuhun") and player:getHp() == 1 and (not self:isEnemy(player) or #self.enemies > 1 and sgs.turncout > 1) then
+	if player:hasSkill("wuhun") and player:getHp() == 1 and (not self:isEnemy(player) or #self.enemies > 1 and sgs.turncount > 1) then
 		local maxnightmare = 0
 		local nightmareplayer = {}
 		for _, ap in sgs.qlist(self.room:getAlivePlayers()) do
@@ -657,7 +659,7 @@ sgs.ai_skill_use_func.ShenfenCard=function(card,use,self)
 	
 	for _,friend in ipairs(self.friends_noself) do
 		if (friend:hasSkill("fangzhu") and friend:getHp() > 1) or 
-		(friend:hasSkill("jilve") and friend:getMark("@waked") >0 and friend:getMark("@bear") >0 and friend:getHp() > 1) then
+		(friend:hasSkill("jilve") and friend:getMark("@waked") > 0 and friend:getMark("@bear") > 0 and friend:getHp() > 1) then
 			good = good + friend:getLostHp()*0.5 + 0.5
 			break
 		end
@@ -676,13 +678,13 @@ sgs.ai_skill_use_func.ShenfenCard=function(card,use,self)
 		if friend:getRole() == "lord" then 
 			good = good - 1
 		end
-		if self:isEquip("SilverLion", friend) and friend:getHp()>1 and friend:isWounded() then good = good +0.5 end
-		if friend:getHp() == 1 and friend:getMark("@fog") <1 and friend:getMark("@fenyong")<1 and self:getAllPeachNum() < 1 then
+		if friend:hasArmorEffect("SilverLion") and friend:getHp() > 1 then good = good + 0.5 end
+		if friend:getHp() == 1 and friend:getMark("@fog") < 1 and friend:getMark("@fenyong") < 1 and self:getAllPeachNum() < 1 then
 			if friend:getRole() == "lord" then
 				good = good - 100 
 			else 
 				good = good - 1 end
-		elseif friend:getMark("@fog") >0 or friend:getMark("@fenyong")>0 then
+		elseif friend:getMark("@fog") > 0 or friend:getMark("@fenyong") > 0 then
 			good = good + 1
 		end
 		if friend:hasSkill("guixin") and friend:getHp()>1 then good = good + 1 end
@@ -702,10 +704,10 @@ sgs.ai_skill_use_func.ShenfenCard=function(card,use,self)
 		elseif enemy:getMark("@fog") >0 or enemy:getMark("@fenyong")>0 then
 			good = good - 1
 		end
-		if enemy:hasSkill("guixin") and enemy:getHp()>1 then good = good - 1 end
-		if enemy:hasSkill("ganglie") and enemy:getHp()>1 then good = good - 1 end
-		if enemy:hasSkill("xuehen") and enemy:getHp()>1 then good = good - 1 end
-		if self:isEquip("SilverLion", enemy) and enemy:getHp()>1 and enemy:isWounded() then good = good - 0.5 end
+		if enemy:hasSkill("guixin") and enemy:getHp() > 1 then good = good - 1 end
+		if enemy:hasSkill("ganglie") and enemy:getHp() > 1 then good = good - 1 end
+		if enemy:hasSkill("xuehen") and enemy:getHp() > 1 then good = good - 1 end
+		if enemy:hasArmorEffect("SilverLion") and enemy:getHp() > 1 then good = good - 0.5 end
 	end
 	
 	good = good - (friendscards - enemiescards)/4
@@ -724,7 +726,7 @@ table.insert(sgs.ai_choicemade_filter.cardUsed, shenfen_filter)
 
 sgs.ai_use_value.ShenfenCard = 8
 sgs.ai_use_priority.ShenfenCard = 9.3
-sgs.ai_card_intention.ShenfenCard = function(card, from, tos, source)
+sgs.ai_card_intention.ShenfenCard = function(self, card, from, tos, source)
 	 sgs.shenfensource = nil
 end
 
@@ -736,7 +738,7 @@ longhun_skill.name="longhun"
 table.insert(sgs.ai_skills, longhun_skill)
 longhun_skill.getTurnUseCard = function(self)
 	if self.player:getHp()>1 then return end
-	local cards=sgs.QList2Table(self.player:getCards("he"))
+	local cards = sgs.QList2Table(self.player:getCards("he"))
 	self:sortByUseValue(cards,true)
 	for _, card in ipairs(cards) do
 		if card:getSuit() == sgs.Card_Diamond and self:slashIsAvailable() then
@@ -781,8 +783,8 @@ function SmartAI:needBear(player)
 end
 
 sgs.ai_skill_invoke.jilve=function(self,data)
-	local n=self.player:getMark("@bear")
-	local use=(n>2 or self:getOverflow()>0)
+	local n = self.player:getMark("@bear")
+	local use = (n > 2 or self:getOverflow() > 0)
 	local event = self.player:getMark("JilveEvent")
 	if event == sgs.AskForRetrial then
 		local judge = data:toJudge()
@@ -802,9 +804,9 @@ sgs.ai_skill_invoke.jilve=function(self,data)
 end
 
 local jilve_skill={}
-jilve_skill.name="jilve"
+jilve_skill.name = "jilve"
 table.insert(sgs.ai_skills,jilve_skill)
-jilve_skill.getTurnUseCard=function(self)
+jilve_skill.getTurnUseCard = function(self)
 	if self.player:getMark("@bear") < 1 or self.player:usedTimes("JilveCard") >= 2 then return end
 	local wanshadone = self.player:getTag("JilveWansha"):toPlayer()
 	if not wanshadone then
@@ -861,5 +863,7 @@ sgs.ai_skill_use["@zhiheng"]=function(self,prompt)
 	if dummy_use.card then return (dummy_use.card):toString() .. "->." end
 	return "."
 end
+
+sgs.ai_skill_cardask["@jilve-guicai"]=sgs.ai_skill_cardask["@guicai-card"]
 
 sgs.ai_suit_priority.wushen= "club|spade|diamond|heart"
