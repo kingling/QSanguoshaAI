@@ -70,21 +70,21 @@ sgs.ai_chat_func[sgs.Death].stupid_lord=function(self, player, data)
 				"还有更2的吗",
 				"对这个主，真的很无语",
 				}
-	if damage and damage.from and damage.from:isLord() and self.role=="loyalist" then
+	if damage and damage.from and damage.from:isLord() and self.role=="loyalist" and damage.to:objectName() == player:objectName() then
 		local index =1+ (os.time() % #chat)
 		damage.to:speak(chat[index])
 	end
 end
 
 sgs.ai_chat_func[sgs.Dying].fuck_renegade=function(self, player, data)
-	local damage=data:toDamageStar()
+	local dying = data:toDying()
 	local chat ={"小内，你还不跳啊，要崩盘吧",
 				"9啊，不9就输了",
 				"999...999...",
 				"小内，我死了，你也赢不了",
 				"没戏了，小内不帮忙的话，我们全部托管吧",
 				}
-	if (self.role=="rebel" or self.role=="loyalist") and sgs.current_mode_players["renegade"]>0 then
+	if (self.role=="rebel" or self.role=="loyalist") and sgs.current_mode_players["renegade"]>0 and dying.who:objectName() == player:objectName() then
 		local index =1+ (os.time() % #chat)
 		player:speak(chat[index])
 	end
@@ -122,13 +122,15 @@ end
 
 function SmartAI:speak(type, isFemale)
 	if not sgs.GetConfig("AIChat", true) then return end
-	if self.player:getState() ~= "robot" then return end
+	if self.player:getState() ~= "robot" then return end	
 	
-	local i =math.random(1,#sgs.ai_chat[type])
-	if isFemale then
-		type = type .. "_female"
+	if sgs.ai_chat[type] then
+		local i =math.random(1,#sgs.ai_chat[type])	
+		if isFemale then type = type .. "_female" end
+		self.player:speak(sgs.ai_chat[type][i])
+	else
+		self.player:speak(type)
 	end
-	self.player:speak(sgs.ai_chat[type][i])
 end
 
 sgs.ai_chat={}

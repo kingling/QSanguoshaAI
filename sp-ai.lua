@@ -190,7 +190,7 @@ sgs.ai_skill_use["@@yuanhu"] = function(self, prompt)
 	local cards = self.player:getHandcards()
 	cards = sgs.QList2Table(cards)
 	self:sortByKeepValue(cards)
-	if self:isEquip("SilverLion") and yuanhu_validate(self, "SilverLion", false) then
+	if self.player:hasArmorEffect("SilverLion") and yuanhu_validate(self, "SilverLion", false) then
 		local player = yuanhu_validate(self, "SilverLion", false)
 		local card_id = self.player:getArmor():getEffectiveId()
 		return "@YuanhuCard=" .. card_id .. "->" .. player:objectName()
@@ -261,7 +261,7 @@ sgs.ai_skill_playerchosen.yuanhu = function(self, targets)
 	end
 end
 
-sgs.ai_card_intention.YuanhuCard = function(card, from, to)
+sgs.ai_card_intention.YuanhuCard = function(self, card, from, to)
 	if to[1]:hasSkill("bazhen") or to[1]:hasSkill("yizhong") or (to[1]:hasSkill("kongcheng") and to[1]:isKongcheng()) then
 		if sgs.Sanguosha:getCard(card:getEffectiveId()):isKindOf("SilverLion") then
 			sgs.updateIntention(from, to[1], 10)
@@ -323,7 +323,7 @@ function can_be_selected_as_target(self, card, who)
 	if self:cantbeHurt(who) or self:damageIsEffective(who) then return false end
 	if self:isEnemy(who) then
 		if not self.player:hasSkill("jueqing") then
-			if who:hasSkill("guixin") and (self.room:getAliveCount() >= 4 or not who:faceUp()) then return false end
+			if who:hasSkill("guixin") and (self.room:getAliveCount() >= 4 or not who:faceUp()) and not who:hasSkill("manjuan") then return false end
 			if (who:hasSkill("ganglie") or who:hasSkill("neoganglie")) and (self.player:getHp() == 1 and self.player:getHandcardNum() <= 2) then return false end
 			if who:hasSkill("jieming") then
 				for _, enemy in ipairs(self.enemies) do
@@ -333,6 +333,12 @@ function can_be_selected_as_target(self, card, who)
 			if who:hasSkill("fangzhu") then
 				for _, enemy in ipairs(self.enemies) do
 					if not enemy:faceUp() then return false end
+				end
+			end
+			if who:hasSkill("yiji") then
+				local huatuo = self.room:findPlayerBySkillName("jijiu")
+				if huatuo and self:isEnemy(huatuo) and huatuo:getHandcardNum() >= 3 then
+					return false
 				end
 			end
 		end
@@ -345,7 +351,8 @@ function can_be_selected_as_target(self, card, who)
 				return true 
 			end 
 		end
-		if who:hasSkill("hunzi") and who:getMark("hunzi") == 0 and who == self.player:getNextAlive() and who:getHp() == 2 then return true end
+		if who:hasSkill("hunzi") and who:getMark("hunzi") == 0
+			and who:objectName() == self.player:getNextAlive():objectName() and who:getHp() == 2 then return true end
 		return false
 	end
 	return false
@@ -386,6 +393,53 @@ sgs.ai_skill_use_func.XuejiCard=function(card,use,self)
 			end
 			assert(use.to:length() > 0)
 		end
+	end
+end
+--[[
+sgs.ai_card_intention.XuejiCard = function(self, card, from, tos)
+	--服务器报错：lua/ai/sp-ai.lua:400: attempt to index field 'room' (a nil value)
+	local huatuo = self.room:findPlayerBySkillName("jijiu")
+	for _, to in ipairs(tos) do
+		local intention = 60
+		if to:hasSkill("yiji") and not from:hasSkill("jueqing") then
+			if (huatuo and self:isFriend(huatuo) and huatuo:getHandcardNum() >= 3 and huatuo:objectName() ~= from:objectName()) then
+				intention = -30
+			end
+			if to:getLostHp() == 0 and to:getMaxHp() >= 3 then
+				intention = -10
+			end
+		end
+		if to:hasSkill("hunzi") and to:getMark("hunzi") == 0
+			and to:objectName() == to:getNextAlive():objectName() and to:getHp() == 2 then intention = -20 end
+		sgs.updateIntention(from, to, intention)
+	end
+end
+]]--
+sgs.ai_card_intention.XuejiCard = function(self, card, from, tos)
+	local room = from:getRoom()
+	local huatuo = room:findPlayerBySkillName("jijiu")
+	for _,to in ipairs(tos) do
+		local intention = 60
+		if to:hasSkill("yiji") and not from:hasSkill("jueqing") then
+			if huatuo then
+				local roleHuatuo = sgs.compareRoleEvaluation(huatuo, "rebel", "loyalist")
+				local roleSource = sgs.compareRoleEvaluation(from, "rebel", "loyalist")
+				if roleHuatuo == roleSource then
+					if huatuo:getHandcardNum() >= 3 and huatuo:objectName() ~= from:objectName() then
+						intention = -30
+					end
+				end
+			end
+			if to:getLostHp() == 0 and to:getMaxHp() >= 3 then
+				intention = -10
+			end
+		end
+		if to:hasSkill("hunzi") and to:getMark("hunzi") == 0 then
+			if to:objectName() == to:getNextAlive():objectName() and to:getHp() == 2 then 
+				intention = -20 
+			end
+		end
+		sgs.updateIntention(from, to, intention)
 	end
 end
 
@@ -457,11 +511,12 @@ sgs.ai_skill_use_func.SongciCard = function(card,use,self)
 		end
 	end
 	
-	self:sort(self.enemies, "handcard", true)
+	self:sort(self.enemies, "handcard")
+	self.enemies = sgs.reverse(self.enemies)
 	for _, enemy in ipairs(self.enemies) do
 		if enemy:getMark("@songci") == 0 and enemy:getHandcardNum() > enemy:getHp() and not enemy:isNude() then
 			if not ((self:hasSkills(sgs.lose_equip_skill, enemy) and enemy:getEquips():length() > 0) 
-					or (self:isEquip("SilverLion", enemy) and enemy:isWounded())) then
+					or (enemy:hasArmorEffect("SilverLion") and enemy:isWounded() and self:isWeak(enemy))) then
 				use.card = sgs.Card_Parse("@SongciCard=.")
 				if use.to then use.to:append(enemy) end
 				return
@@ -472,8 +527,9 @@ end
 
 sgs.ai_use_value.SongciCard = 3
 sgs.ai_use_priority.SongciCard = 2.5
+sgs.ai_chaofeng.chenlin = 3
 
-sgs.ai_card_intention.SongciCard = function(card, from, tos, source)	
+sgs.ai_card_intention.SongciCard = function(self, card, from, tos, source)	
 	for _, to in ipairs(tos) do
 		if to:getHandcardNum() > to:getHp() then
 			sgs.updateIntention(from, to, 100)
@@ -523,10 +579,11 @@ sgs.ai_skill_invoke.fanqu = sgs.ai_skill_invoke.cv_machao
 
 sgs.ai_chaofeng.sp_machao = sgs.ai_chaofeng.machao
 
-sgs.ai_skill_invoke.tuoqiao = function(self, data)
+sgs.ai_skill_invoke.cv_diaochan = function(self, data)
 	if math.random(0, 2) == 0 then return false
-	elseif math.random(0, 2) == 0  then sgs.ai_skill_choice.tuoqiao="SP-Diaochan" return true
-	else sgs.ai_skill_choice.tuoqiao="BGM-Diaochan" return true end
+	elseif math.random(0, 3) == 0 then sgs.ai_skill_choice.cv_diaochan = "tw_diaochan" return true
+	elseif math.random(0, 3) == 0 then sgs.ai_skill_choice.cv_diaochan = "heg_diaochan" return true
+	else sgs.ai_skill_choice.cv_diaochan = "sp_diaochan" return true end
 end
 
 sgs.ai_chaofeng.sp_diaochan = sgs.ai_chaofeng.diaochan
@@ -535,7 +592,17 @@ sgs.ai_skill_invoke.guiwei = sgs.ai_skill_invoke.guixiang
 
 sgs.ai_skill_invoke.pangde_guiwei = sgs.ai_skill_invoke.guixiang
 
+sgs.ai_skill_invoke.cv_yuanshu = function(self, data)
+	if math.random(0, 2) == 0 then return true end
+	return false
+end
+
 sgs.ai_skill_invoke.cv_zhaoyun = function(self, data)
+	if math.random(0, 2) == 0 then return true end
+	return false
+end
+
+sgs.ai_skill_invoke.cv_ganning = function(self, data)
 	if math.random(0, 2) == 0 then return true end
 	return false
 end
@@ -554,6 +621,18 @@ end
 
 sgs.ai_skill_invoke.cv_zhouyu = function(self, data)
 	if math.random(0, 3) >= 1 then return false
-	elseif math.random(0, 4) == 0 then sgs.ai_skill_choice.cv_xiaoqiao = "heg_zhouyu" return true
-	else sgs.ai_skill_choice.cv_xiaoqiao = "sp_heg_zhouyu" return true end
+	elseif math.random(0, 4) == 0 then sgs.ai_skill_choice.cv_zhouyu = "heg_zhouyu" return true
+	else sgs.ai_skill_choice.cv_zhouyu = "sp_heg_zhouyu" return true end
+end
+
+sgs.ai_skill_invoke.cv_zhenji = function(self, data)
+	if math.random(0, 3) >= 2 then return false
+	elseif math.random(0, 4) == 0 then sgs.ai_skill_choice.cv_zhenji = "tw_zhenji" return true
+	else sgs.ai_skill_choice.cv_zhenji = "heg_zhenji" return true end
+end
+
+sgs.ai_skill_invoke.cv_lvbu = function(self, data)
+	if math.random(0, 3) >= 1 then return false
+	elseif math.random(0, 4) == 0 then sgs.ai_skill_choice.cv_lvbu = "tw_lvbu" return true
+	else sgs.ai_skill_choice.cv_lvbu = "heg_lvbu" return true end
 end

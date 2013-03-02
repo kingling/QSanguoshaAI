@@ -30,13 +30,17 @@ function sgs.ai_cardneed.huanshi(to, card, self)
 	for _, player in ipairs(self.friends) do
 		if self:getFinalRetrial(to) == 1 then 
 			if self:willSkipDrawPhase(player) then
-				return card:getSuit() == sgs.Card_Club
+				return card:getSuit() == sgs.Card_Club and not self:hasSuit("club", true, to)
 			end
 			if self:willSkipPlayPhase(player) then
-				return card:getSuit() == sgs.Card_Heart
+				return card:getSuit() == sgs.Card_Heart and not self:hasSuit("heart", true, to)
 			end
 		end
 	end
+end
+
+function sgs.ai_cardneed.mingzhe(to, card, self)
+	return card:isRed() and (getKnownCard(to, "heart", false) + getKnownCard(to, "diamond", false)) < 2
 end
 
 sgs.ai_skill_invoke.hongyuan = function(self, data)
@@ -63,6 +67,7 @@ end
 		（身份局）摸牌阶段，你可以少摸一张牌，令一至两名其他角色各摸一张牌。
 ]]--
 sgs.ai_skill_use["@@hongyuan"] = function(self, prompt)
+	if self:needBear() then return "." end
 	self:sort(self.friends_noself, "handcard")
 	local first_index, second_index
 	for i=1, #self.friends_noself do
@@ -96,7 +101,7 @@ sgs.ai_skill_use["@@hongyuan"] = function(self, prompt)
 	return ("@HongyuanCard=.->%s+%s"):format(first, second)
 end
 
-sgs.ai_card_intention.HongyuanCard = function(card, from, tos, source)
+sgs.ai_card_intention.HongyuanCard = function(self, card, from, tos, source)
 	for _, to in ipairs(tos) do
 		sgs.updateIntention(from, to, -80)
 	end
